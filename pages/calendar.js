@@ -7,11 +7,12 @@ import {
   addDayToRange,
   getDatesBetweenDates,
   getBlockedDates,
+  calcNumberOfNightsBetweenDates,
 } from 'lib/dates'
 
 import { getBookedDates } from 'lib/bookings'
 
-import { getCost } from 'lib/cost'
+import { getCost, calcTotalCostOfStay } from 'lib/cost'
 import { useState } from 'react'
 
 const yesterday = new Date()
@@ -23,6 +24,9 @@ sixMonthsFromNow.setDate(sixMonthsFromNow.getDate() + 30 * 6)
 export default function Calendar() {
   const [from, setFrom] = useState()
   const [to, setTo] = useState()
+
+  const [numberOfNights, setNumberOfNights] = useState(0)
+  const [totalCost, setTotalCost] = useState(0)
 
   const handleDayClick = (day) => {
     const range = addDayToRange(day, {
@@ -56,6 +60,9 @@ export default function Calendar() {
 
     setFrom(range.from)
     setTo(range.to)
+
+    setNumberOfNights(calcNumberOfNightsBetweenDates(range.from, range.to) + 1)
+    setTotalCost(calcTotalCostOfStay(range.from, range.to))
   }
 
   return (
@@ -64,6 +71,7 @@ export default function Calendar() {
         <title>Rental Apartment</title>
         <meta name='description' content='Rental Apartment Website' />
         <link rel='icon' href='/favicon.ico' />
+        <script src='https://js.stripe.com/v3/'></script>
       </Head>
 
       <div className='relative overflow-hidden'>
@@ -101,6 +109,59 @@ export default function Calendar() {
             Availability and prices per night
           </p>
 
+          <p className='text-center'>
+            {numberOfNights > 0 && `Stay for ${numberOfNights} nights`}
+          </p>
+          <p className='text-center mt-2'>
+            {totalCost > 0 && `Total cost: $${totalCost}`}
+          </p>
+
+          {numberOfNights > 0 && (
+            <button
+              className='bg-green-500 text-white mt-5 mx-auto w-40 px-4 py-3 border border-transparent text-base font-medium rounded-md shadow-sm  sm:px-8'
+              onClick={async () => {
+                const res = await fetch('/api/stripe/session', {
+                  body: JSON.stringify({
+                    from,
+                    to,
+                  }),
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  method: 'POST',
+                })
+
+                const data = await res.json()
+                const sessionId = data.sessionId
+                const stripePublicKey = data.stripePublicKey
+
+                const stripe = Stripe(stripePublicKey)
+                const { error } = await stripe.redirectToCheckout({
+                  sessionId,
+                })
+
+                if (error) console.log(error)
+              }}
+            >
+              Book now
+            </button>
+          )}
+
+          <p className='text-center'>
+            {from && to && (
+              <button
+                className='border px-2 py-1 mt-4'
+                onClick={() => {
+                  setFrom(null)
+                  setTo(null)
+                  setNumberOfNights(0)
+                  setTotalCost(0)
+                }}
+              >
+                Reset
+              </button>
+            )}
+          </p>
           <div className='pt-6 flex justify-center availability-calendar'>
             <DayPicker
               components={{
